@@ -75,27 +75,27 @@ def analyze_logs(file_paths):
         # --- Step 4: Detect halts/replenishments
         for part, group in df_relevant.groupby("PartNumber"):
             group = group.reset_index(drop=True)
-            i = 0
             n = len(group)
+            i = 0
 
             while i <= n - 3:
-                r0 = int(group.loc[i, "Result"])
-                r1 = int(group.loc[i + 1, "Result"]) if i + 1 < n else None
-                r2 = int(group.loc[i + 2, "Result"]) if i + 2 < n else None
+                r0, r1, r2 = group.loc[i, "Result"], group.loc[i + 1, "Result"], group.loc[i + 2, "Result"]
 
-                # Three consecutive fails
-                if r0 != 0 and r1 != 0 and r2 != 0:
+                # Three consecutive fails (and must be known failures)
+                if r0 in failure_meanings and r1 in failure_meanings and r2 in failure_meanings:
                     batch_here = str(group.loc[i, "BatchNumber"]).strip()
-                    next_pass_idx = group[(group.index > i + 2) & (group["Result"] == 0)].head(1)
 
-                    fails = [r0, r1, r2]
+                    # Find the next passing attempt (Result == 0)
+                    next_pass = group[(group.index > i + 2) & (group["Result"] == 0)].head(1)
+
+                    fail_codes = [r0, r1, r2]
                     fail_text = ", ".join(
-                        f"{code} → {failure_meanings.get(code, 'Unknown failure')}" for code in fails
+                        f"{code} → {failure_meanings.get(code)}" for code in fail_codes
                     )
-                    main_fail = fails[0]
+                    main_fail = fail_codes[0]
 
-                    if not next_pass_idx.empty:
-                        next_batch = str(next_pass_idx["BatchNumber"].values[0]).strip()
+                    if not next_pass.empty:
+                        next_batch = str(next_pass["BatchNumber"].values[0]).strip()
                         if next_batch != batch_here:
                             replenishments.append({
                                 "ProductName": product_name,
@@ -105,7 +105,7 @@ def analyze_logs(file_paths):
                                 "Reference": group.loc[i, "Reference"],
                                 "BatchNumber": batch_here,
                                 "FailCodes": fail_text,
-                                "MainFailType": failure_meanings.get(main_fail, "Unknown failure")
+                                "MainFailType": failure_meanings[main_fail]
                             })
                         else:
                             all_halts.append({
@@ -116,7 +116,7 @@ def analyze_logs(file_paths):
                                 "Reference": group.loc[i, "Reference"],
                                 "BatchNumber": batch_here,
                                 "FailCodes": fail_text,
-                                "MainFailType": failure_meanings.get(main_fail, "Unknown failure")
+                                "MainFailType": failure_meanings[main_fail]
                             })
 
                     i += 3
@@ -152,7 +152,6 @@ if uploaded_files:
 
         halts_df, replenishments_df, all_data_df = analyze_logs(file_paths)
 
-        # save in session state
         st.session_state["halts"] = halts_df
         st.session_state["repls"] = replenishments_df
         st.session_state["all_data"] = all_data_df
