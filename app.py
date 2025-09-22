@@ -67,9 +67,9 @@ def analyze_logs(file_paths):
         df_relevant = df[["PartNumber", "Description", "Reference", "BatchNumber", "Result"]].dropna()
         df_relevant["Result"] = pd.to_numeric(df_relevant["Result"], errors="coerce").fillna(0).astype(int)
 
-        # keep all attempts
         df_relevant["ProductName"] = product_name
         df_relevant["File"] = filename
+        df_relevant["FilePath"] = file_path  # keep path for later lookup
         all_data.append(df_relevant)
 
         # --- Step 4: Detect halts/replenishments
@@ -94,30 +94,26 @@ def analyze_logs(file_paths):
                     )
                     main_fail = fail_codes[0]
 
+                    event = {
+                        "ProductName": product_name,
+                        "File": filename,
+                        "FilePath": file_path,
+                        "PartNumber": group.loc[i, "PartNumber"],
+                        "Description": group.loc[i, "Description"],
+                        "Reference": group.loc[i, "Reference"],
+                        "BatchNumber": batch_here,
+                        "FailCodes": fail_text,
+                        "MainFailType": failure_meanings[main_fail]
+                    }
+
                     if not next_pass.empty:
                         next_batch = str(next_pass["BatchNumber"].values[0]).strip()
                         if next_batch != batch_here:
-                            replenishments.append({
-                                "ProductName": product_name,
-                                "File": filename,
-                                "PartNumber": group.loc[i, "PartNumber"],
-                                "Description": group.loc[i, "Description"],
-                                "Reference": group.loc[i, "Reference"],
-                                "BatchNumber": batch_here,
-                                "FailCodes": fail_text,
-                                "MainFailType": failure_meanings[main_fail]
-                            })
+                            replenishments.append(event)
                         else:
-                            all_halts.append({
-                                "ProductName": product_name,
-                                "File": filename,
-                                "PartNumber": group.loc[i, "PartNumber"],
-                                "Description": group.loc[i, "Description"],
-                                "Reference": group.loc[i, "Reference"],
-                                "BatchNumber": batch_here,
-                                "FailCodes": fail_text,
-                                "MainFailType": failure_meanings[main_fail]
-                            })
+                            all_halts.append(event)
+                    else:
+                        all_halts.append(event)
 
                     i += 3
                     continue
@@ -162,16 +158,6 @@ if uploaded_files:
 if "halts" in st.session_state:
     halts_df = st.session_state["halts"]
     replenishments_df = st.session_state["repls"]
-    all_data_df = st.session_state["all_data"]
-
-    # Product filter
-    all_products = sorted(all_data_df["ProductName"].unique())
-    product_choice = st.selectbox("Filter by Product", ["All"] + all_products)
-
-    if product_choice != "All":
-        halts_df = halts_df[halts_df["ProductName"] == product_choice]
-        replenishments_df = replenishments_df[replenishments_df["ProductName"] == product_choice]
-        all_data_df = all_data_df[all_data_df["ProductName"] == product_choice]
 
     # ---------------- Halts ----------------
     st.subheader("Halts")
@@ -189,18 +175,31 @@ if "halts" in st.session_state:
 
         if st.button("Show halt details"):
             selected_halt = halts_df.loc[selected_idx]
+            file_path = selected_halt["FilePath"]
             part_num = selected_halt["PartNumber"]
-            product = selected_halt["ProductName"]
 
-            subset = all_data_df[
-                (all_data_df["ProductName"] == product) &
-                (all_data_df["PartNumber"] == part_num)
-            ].copy()
+            # Re-read that specific file
+            df = pd.read_csv(
+                file_path,
+                encoding="latin1",
+                skiprows=2,
+                usecols=range(12),
+                engine="python",
+                on_bad_lines="skip"
+            )
+            df = df.rename(columns={
+                df.columns[1]: "PartNumber",
+                df.columns[2]: "Description",
+                df.columns[3]: "Reference",
+                df.columns[6]: "BatchNumber",
+                df.columns[11]: "Result"
+            })
+            subset = df[df["PartNumber"] == part_num].copy()
 
             subset = subset.reset_index()
             subset.rename(columns={"index": "RowNumber"}, inplace=True)
 
-            st.write(f"All placements for part {part_num} (Product: {product})")
+            st.write(f"All placements for part {part_num} in file {selected_halt['File']}")
             st.dataframe(subset)
 
     # ---------------- Replenishments ----------------
@@ -219,47 +218,29 @@ if "halts" in st.session_state:
 
         if st.button("Show replenishment details"):
             selected_repl = replenishments_df.loc[selected_idx_repl]
+            file_path = selected_repl["FilePath"]
             part_num = selected_repl["PartNumber"]
-            product = selected_repl["ProductName"]
 
-            subset = all_data_df[
-                (all_data_df["ProductName"] == product) &
-                (all_data_df["PartNumber"] == part_num)
-            ].copy()
+            # Re-read that specific file
+            df = pd.read_csv(
+                file_path,
+                encoding="latin1",
+                skiprows=2,
+                usecols=range(12),
+                engine="python",
+                on_bad_lines="skip"
+            )
+            df = df.rename(columns={
+                df.columns[1]: "PartNumber",
+                df.columns[2]: "Description",
+                df.columns[3]: "Reference",
+                df.columns[6]: "BatchNumber",
+                df.columns[11]: "Result"
+            })
+            subset = df[df["PartNumber"] == part_num].copy()
 
             subset = subset.reset_index()
             subset.rename(columns={"index": "RowNumber"}, inplace=True)
 
-            st.write(f"All placements for part {part_num} (Product: {product})")
+            st.write(f"All placements for part {part_num} in file {selected_repl['File']}")
             st.dataframe(subset)
-
-    # ---------------- Other Stats ----------------
-    st.subheader("Failure Stats")
-    if not halts_df.empty:
-        fail_counts_df = halts_df["MainFailType"].value_counts().reset_index()
-        fail_counts_df.columns = ["FailureType", "Count"]
-        st.dataframe(fail_counts_df)
-
-    st.subheader("Halts by Product")
-    if not halts_df.empty:
-        product_counts_df = halts_df["ProductName"].value_counts().reset_index()
-        product_counts_df.columns = ["ProductName", "Halts"]
-        st.dataframe(product_counts_df)
-
-    st.subheader("Top Problematic Components")
-    if not halts_df.empty:
-        component_counts_df = halts_df["PartNumber"].value_counts().reset_index()
-        component_counts_df.columns = ["PartNumber", "Halts"]
-        st.dataframe(component_counts_df)
-
-    st.subheader("Fails by Batch")
-    if not halts_df.empty:
-        batch_counts_df = halts_df["BatchNumber"].value_counts().reset_index()
-        batch_counts_df.columns = ["BatchNumber", "Halts"]
-        st.dataframe(batch_counts_df)
-
-    st.subheader("Batch Fail Correlation")
-    if not halts_df.empty:
-        batch_corr = pd.crosstab(halts_df["BatchNumber"], halts_df["MainFailType"])
-        st.dataframe(batch_corr)
-
