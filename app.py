@@ -173,12 +173,67 @@ if "halts" in st.session_state:
         replenishments_df = replenishments_df[replenishments_df["ProductName"] == product_choice]
         all_data_df = all_data_df[all_data_df["ProductName"] == product_choice]
 
+    # ---------------- Halts ----------------
     st.subheader("Halts")
-    st.dataframe(halts_df)
+    if not halts_df.empty:
+        halts_df = halts_df.reset_index(drop=True)
+        st.dataframe(halts_df)
 
+        selected_idx = st.number_input(
+            "Enter halt row number to inspect details (from table above)",
+            min_value=0,
+            max_value=len(halts_df) - 1,
+            step=1,
+            key="halt_select"
+        )
+
+        if st.button("Show halt details"):
+            selected_halt = halts_df.loc[selected_idx]
+            part_num = selected_halt["PartNumber"]
+            product = selected_halt["ProductName"]
+
+            subset = all_data_df[
+                (all_data_df["ProductName"] == product) &
+                (all_data_df["PartNumber"] == part_num)
+            ].copy()
+
+            subset = subset.reset_index()
+            subset.rename(columns={"index": "RowNumber"}, inplace=True)
+
+            st.write(f"All placements for part {part_num} (Product: {product})")
+            st.dataframe(subset)
+
+    # ---------------- Replenishments ----------------
     st.subheader("Replenishments")
-    st.dataframe(replenishments_df)
+    if not replenishments_df.empty:
+        replenishments_df = replenishments_df.reset_index(drop=True)
+        st.dataframe(replenishments_df)
 
+        selected_idx_repl = st.number_input(
+            "Enter replenishment row number to inspect details (from table above)",
+            min_value=0,
+            max_value=len(replenishments_df) - 1,
+            step=1,
+            key="repl_select"
+        )
+
+        if st.button("Show replenishment details"):
+            selected_repl = replenishments_df.loc[selected_idx_repl]
+            part_num = selected_repl["PartNumber"]
+            product = selected_repl["ProductName"]
+
+            subset = all_data_df[
+                (all_data_df["ProductName"] == product) &
+                (all_data_df["PartNumber"] == part_num)
+            ].copy()
+
+            subset = subset.reset_index()
+            subset.rename(columns={"index": "RowNumber"}, inplace=True)
+
+            st.write(f"All placements for part {part_num} (Product: {product})")
+            st.dataframe(subset)
+
+    # ---------------- Other Stats ----------------
     st.subheader("Failure Stats")
     if not halts_df.empty:
         fail_counts_df = halts_df["MainFailType"].value_counts().reset_index()
@@ -207,3 +262,4 @@ if "halts" in st.session_state:
     if not halts_df.empty:
         batch_corr = pd.crosstab(halts_df["BatchNumber"], halts_df["MainFailType"])
         st.dataframe(batch_corr)
+
