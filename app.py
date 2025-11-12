@@ -41,7 +41,7 @@ def analyze_logs(file_paths):
         except Exception:
             product_name = "Unknown"
 
-        # --- Step 2: Load actual log data
+        # --- Step 2: Load actual log data (keep 12 columns as before)
         try:
             df = pd.read_csv(
                 file_path,
@@ -61,10 +61,13 @@ def analyze_logs(file_paths):
             df.columns[2]: "Description",
             df.columns[3]: "Reference",
             df.columns[6]: "BatchNumber",
+            df.columns[7]: "ColumnH",   # <-- Added
+            df.columns[8]: "ColumnI",   # <-- Added
             df.columns[11]: "Result"
         })
 
-        df_relevant = df[["PartNumber", "Description", "Reference", "BatchNumber", "Result"]].dropna()
+        # Include new columns (H, I)
+        df_relevant = df[["PartNumber", "Description", "Reference", "BatchNumber", "ColumnH", "ColumnI", "Result"]].dropna(subset=["PartNumber"])
         df_relevant["Result"] = pd.to_numeric(df_relevant["Result"], errors="coerce").fillna(0).astype(int)
 
         df_relevant["ProductName"] = product_name
@@ -72,7 +75,7 @@ def analyze_logs(file_paths):
         df_relevant["FilePath"] = file_path  # keep path for later lookup
         all_data.append(df_relevant)
 
-        # --- Step 4: Detect halts/replenishments
+        # --- Step 4: Detect halts/replenishments (unchanged)
         for part, group in df_relevant.groupby("PartNumber"):
             group = group.reset_index(drop=True)
             n = len(group)
@@ -81,11 +84,9 @@ def analyze_logs(file_paths):
             while i <= n - 3:
                 r0, r1, r2 = group.loc[i, "Result"], group.loc[i + 1, "Result"], group.loc[i + 2, "Result"]
 
-                # Three consecutive fails (and must be known failures)
+                # Three consecutive fails (known failures only)
                 if r0 in failure_meanings and r1 in failure_meanings and r2 in failure_meanings:
                     batch_here = str(group.loc[i, "BatchNumber"]).strip()
-
-                    # Find the next passing attempt (Result == 0)
                     next_pass = group[(group.index > i + 2) & (group["Result"] == 0)].head(1)
 
                     fail_codes = [r0, r1, r2]
@@ -102,6 +103,8 @@ def analyze_logs(file_paths):
                         "Description": group.loc[i, "Description"],
                         "Reference": group.loc[i, "Reference"],
                         "BatchNumber": batch_here,
+                        "ColumnH": group.loc[i, "ColumnH"],  # Added
+                        "ColumnI": group.loc[i, "ColumnI"],  # Added
                         "FailCodes": fail_text,
                         "MainFailType": failure_meanings[main_fail]
                     }
@@ -114,7 +117,6 @@ def analyze_logs(file_paths):
                             all_halts.append(event)
                     else:
                         all_halts.append(event)
-
                     i += 3
                     continue
                 i += 1
@@ -192,11 +194,11 @@ if "halts" in st.session_state:
                 df.columns[2]: "Description",
                 df.columns[3]: "Reference",
                 df.columns[6]: "BatchNumber",
+                df.columns[7]: "ColumnH",   # Added
+                df.columns[8]: "ColumnI",   # Added
                 df.columns[11]: "Result"
             })
-            subset = df[df["PartNumber"] == part_num].copy()
-
-            subset = subset.reset_index()
+            subset = df[df["PartNumber"] == part_num].copy().reset_index()
             subset.rename(columns={"index": "RowNumber"}, inplace=True)
 
             st.write(f"All placements for part {part_num} in file {selected_halt['File']}")
@@ -235,12 +237,13 @@ if "halts" in st.session_state:
                 df.columns[2]: "Description",
                 df.columns[3]: "Reference",
                 df.columns[6]: "BatchNumber",
+                df.columns[7]: "ColumnH",   # Added
+                df.columns[8]: "ColumnI",   # Added
                 df.columns[11]: "Result"
             })
-            subset = df[df["PartNumber"] == part_num].copy()
-
-            subset = subset.reset_index()
+            subset = df[df["PartNumber"] == part_num].copy().reset_index()
             subset.rename(columns={"index": "RowNumber"}, inplace=True)
 
             st.write(f"All placements for part {part_num} in file {selected_repl['File']}")
             st.dataframe(subset)
+
