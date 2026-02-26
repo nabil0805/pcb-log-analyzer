@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 
 # ----------------------------
-# Failure code meanings
+# Failure code meaningss
 # ----------------------------
 failure_meanings = {
     2: "Rejected by vision before electrical test",
@@ -246,4 +246,5 @@ if "halts" in st.session_state:
 
             st.write(f"All placements for part {part_num} in file {selected_repl['File']}")
             st.dataframe(subset)
+
 
