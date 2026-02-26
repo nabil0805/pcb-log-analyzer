@@ -1,6 +1,6 @@
 pandas
-streamlit
 matplotlib
 xlsxwriter
 streamlit>=1.32
+
 
