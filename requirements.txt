@@ -2,3 +2,4 @@ pandas
 streamlit
 matplotlib
 xlsxwriter
+altair==4.2.2
